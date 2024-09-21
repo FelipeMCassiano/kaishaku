@@ -1,7 +1,15 @@
 import { which } from "bun";
 import { dbToy, type person } from "../db/db";
 import { err, ok, type Result } from "../pkg/result";
-import { CLAUSES, COMPARATOR, OPERATIONS, type Collum, type Condition } from "./tokens";
+import {
+    CLAUSES,
+    COMPARATOR,
+    OPERATIONS,
+    type Column,
+    type Condition,
+    type Table,
+    type Values,
+} from "./tokens";
 
 export const interpret = (query: string[]): Result<string, Error> => {
     while (query.length > 0) {
@@ -12,12 +20,20 @@ export const interpret = (query: string[]): Result<string, Error> => {
 
         switch (op) {
             case OPERATIONS.SELECT:
-                handleSelect(query);
+                const resSELECT = handleSelect(query);
+                if (resSELECT.type === "err") {
+                    return err(resSELECT.value);
+                }
                 break;
 
             case OPERATIONS.UPDATE:
             case OPERATIONS.DELETE:
             case OPERATIONS.INSERT:
+                const resInsert = handleInsert(query);
+                if (resInsert.type === "err") {
+                    return err(resInsert.value);
+                }
+                return ok("pronto");
         }
     }
 
@@ -25,6 +41,91 @@ export const interpret = (query: string[]): Result<string, Error> => {
 };
 const getOperation = (x: string): OPERATIONS => {
     return OPERATIONS[x as keyof typeof OPERATIONS];
+};
+
+const handleInsert = (query: string[]): Result<null, Error> => {
+    const values: Values = [];
+    const columns: Column[] = [];
+    const into = getOperation(query.shift() ?? "");
+    if (into === undefined) {
+        return err(Error("INSERT: missing into"));
+    }
+
+    const tableName = query.shift();
+
+    // TODO: give an error either the table doesn't exists
+    if (tableName === undefined) {
+        return err(Error("INSERT: missing table name"));
+    }
+
+    while (query.length > 0) {
+        const column = handleColumns(query);
+        if (column === undefined) {
+            continue;
+        }
+
+        columns.push(column);
+
+        if (isVALUES(query[0])) {
+            const res = handleValues(query.slice(1));
+            if (res === undefined) {
+                continue;
+            }
+            values.push(...res);
+            break;
+        }
+    }
+
+    execInsert(tableName, values, columns);
+
+    return ok(null);
+};
+
+const execInsert = (tableName: string, values: Values, columns: Column[]) => {
+    const table = dbToy.get(tableName);
+    if (table === undefined) {
+        return;
+    }
+
+    type typeOfTable = (typeof table)[0];
+
+    const newRow: typeOfTable[] = [];
+    columns.forEach((col, index) => {
+        const row: any = { [col.value as keyof typeOfTable]: values[index] };
+        newRow.push(row as typeOfTable);
+    });
+
+    table.push(...newRow);
+};
+const handleValues = (query: string[]): string[] | undefined => {
+    const values: Values = [];
+    while (query.length > 0) {
+        const value = query.shift();
+        if (value === undefined) {
+            return;
+        }
+
+        values.push(value);
+    }
+
+    return values;
+};
+
+const handleColumns = (query: string[]): Column | undefined => {
+    if (!isVALUES(query[0])) {
+        const next = query.shift();
+        if (next === undefined) {
+            return;
+        }
+
+        return { value: next };
+    }
+
+    return;
+};
+
+const isVALUES = (x: string): boolean => {
+    return OPERATIONS[x as keyof typeof OPERATIONS] === OPERATIONS.VALUES;
 };
 
 const handleSelect = (query: string[]): Result<null, Error> => {
@@ -37,7 +138,7 @@ const handleSelect = (query: string[]): Result<null, Error> => {
             return err(Error("CLAUSE: clause not valid"));
         }
 
-        if (isCollum(clause)) {
+        if (isColumn(clause)) {
             columns.push(clause.value);
             continue;
         }
@@ -131,8 +232,8 @@ function evaluateCondition(cond: Condition, tableRow: any): boolean {
             return false;
     }
 }
-const isCollum = (clause: CLAUSES | Collum): clause is Collum => {
-    return (clause as Collum).value !== undefined;
+const isColumn = (clause: CLAUSES | Column): clause is Column => {
+    return (clause as Column).value !== undefined;
 };
 
 const handleWHERE = (query: string[]): Result<Condition, Error> => {
@@ -163,7 +264,7 @@ const handleFROM = (query: string[]): Result<string, Error> => {
     return ok(table);
 };
 
-const getClauseOrCollum = (x: string): CLAUSES | Collum | null => {
+const getClauseOrCollum = (x: string): CLAUSES | Column | null => {
     if (x.length < 0) {
         return null;
     }

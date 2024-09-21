@@ -3,6 +3,8 @@ export enum OPERATIONS {
     UPDATE = "UPDATE",
     DELETE = "DELETE",
     INSERT = "INSERT",
+    INTO = "INTO",
+    VALUES = "VALUES",
 }
 
 export enum CLAUSES {
@@ -17,7 +19,9 @@ export enum COMPARATOR {
     MINOR = "<",
 }
 
-export interface Collum {
+export type Values = string[];
+
+export interface Column {
     value: string;
 }
 
