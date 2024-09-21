@@ -1,6 +1,7 @@
+import { which } from "bun";
 import { dbToy, type person } from "../db/db";
 import { err, ok, type Result } from "../pkg/result";
-import { CLAUSES, OPERATIONS, type Collum } from "./tokens";
+import { CLAUSES, COMPARATOR, OPERATIONS, type Collum, type Condition } from "./tokens";
 
 export const interpret = (query: string[]): Result<string, Error> => {
     while (query.length > 0) {
@@ -29,6 +30,7 @@ const getOperation = (x: string): OPERATIONS => {
 const handleSelect = (query: string[]): Result<null, Error> => {
     const columns: string[] = [];
     const tables: string[] = [];
+    const conditons: Condition[] = [];
     while (query.length > 0) {
         const clause = getClauseOrCollum(query.shift() ?? "");
         if (clause === null) {
@@ -42,17 +44,23 @@ const handleSelect = (query: string[]): Result<null, Error> => {
 
         switch (clause) {
             case CLAUSES.WHERE:
+                const resWhere = handleWHERE(query);
+                if (resWhere.type === "err") {
+                    return err(resWhere.value);
+                }
+
+                conditons.push(resWhere.value);
                 continue;
             case CLAUSES.FROM:
-                const res = handleFROM(query);
-                if (res.type === "err") {
-                    return err(res.value);
+                const resFROM = handleFROM(query);
+                if (resFROM.type === "err") {
+                    return err(resFROM.value);
                 }
-                tables.push(res.value);
+                tables.push(resFROM.value);
                 continue;
         }
     }
-    const result = execSelect(columns, tables);
+    const result = execSelect(columns, tables, conditons);
     if (result.type === "err") {
         return err(result.value);
     }
@@ -60,30 +68,91 @@ const handleSelect = (query: string[]): Result<null, Error> => {
     return ok(null);
 };
 
-const execSelect = (columns: string[], tables: string[]): Result<null, Error> => {
-    const results: any[] = [];
+const execSelect = (
+    columns: string[],
+    tables: string[],
+    conditions: Condition[],
+): Result<null, Error> => {
     while (tables.length > 0) {
-        const table = dbToy.get(tables.shift() ?? "");
-        if (table === undefined) {
-            return err(Error("SELECT: table do not exists"));
+        const tableName = tables.shift() ?? "";
+        const table = dbToy.get(tableName);
+
+        if (!table) {
+            return err(Error(`FROM: Table '${tableName}' does not exist`));
         }
 
-        for (const tableRow of table) {
-            for (const col of columns) {
-                if (col in tableRow) {
-                    results.push(tableRow[col as keyof person]);
+        const results = table
+            .map((tableRow) => {
+                const rowResult: { [key: string]: any } = {};
+
+                if (conditions.length === 0) {
+                    populateRowResult(columns, tableRow, rowResult);
+                    return rowResult;
                 }
-            }
-        }
-    }
 
-    console.log("Results: ", results);
+                for (const cond of conditions) {
+                    if (evaluateCondition(cond, tableRow)) {
+                        populateRowResult(columns, tableRow, rowResult);
+                        break;
+                    }
+                }
+
+                return Object.keys(rowResult).length > 0 ? rowResult : null;
+            })
+            .filter((row) => row !== null);
+
+        console.log("Results: ", results);
+    }
 
     return ok(null);
 };
 
+function populateRowResult(columns: string[], tableRow: any, rowResult: { [key: string]: any }) {
+    columns.forEach((col) => {
+        if (col in tableRow) {
+            rowResult[col] = tableRow[col as keyof person];
+        }
+    });
+}
+
+function evaluateCondition(cond: Condition, tableRow: any): boolean {
+    const leftValue = tableRow[cond.left as keyof person];
+
+    switch (cond.comparisson) {
+        case COMPARATOR.NONE:
+            return true;
+        case COMPARATOR.EQUALS:
+            return leftValue.toString() === cond.right;
+        case COMPARATOR.GREATER:
+            return Number(leftValue) > Number(cond.right);
+        case COMPARATOR.MINOR:
+            return Number(leftValue) < Number(cond.right);
+        default:
+            return false;
+    }
+}
 const isCollum = (clause: CLAUSES | Collum): clause is Collum => {
     return (clause as Collum).value !== undefined;
+};
+
+const handleWHERE = (query: string[]): Result<Condition, Error> => {
+    while (query.length > 0) {
+        const left = query.shift();
+        const comparator = getComparator(query.shift() ?? "");
+        const right = query.shift();
+
+        if (comparator === undefined || right === undefined || left === undefined) {
+            return err(Error("WHERE: invalid comparator"));
+        }
+
+        return ok({ right: right, comparisson: comparator, left: left });
+    }
+
+    return err(Error("WHERE: needs a condition"));
+};
+
+const getComparator = (x: string): COMPARATOR | undefined => {
+    return Object.values(COMPARATOR).find((enumValue) => enumValue === x);
 };
 
 const handleFROM = (query: string[]): Result<string, Error> => {

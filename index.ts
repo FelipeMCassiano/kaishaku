@@ -21,7 +21,7 @@ function runPrompt() {
 function run(source: string) {
     const result = interpret(source.split(" "));
     if (result.type === "err") {
-        console.error(result.value);
+        console.error(result.value.message);
         return;
     }
 }

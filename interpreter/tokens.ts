@@ -10,6 +10,13 @@ export enum CLAUSES {
     WHERE = "WHERE",
 }
 
+export enum COMPARATOR {
+    NONE = "",
+    EQUALS = "=",
+    GREATER = ">",
+    MINOR = "<",
+}
+
 export interface Collum {
     value: string;
 }
@@ -20,5 +27,6 @@ export interface Table {
 
 export interface Condition {
     right: string;
+    comparisson: COMPARATOR;
     left: string;
 }
