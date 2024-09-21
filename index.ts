@@ -1,9 +1,12 @@
+import { file } from "bun";
 import { interpret } from "./interpreter/interpreter";
 
-function main() {
+async function main() {
     const args = process.argv.slice(2);
     if (args.length > 1) {
         console.log("Usage: kaishaku [script]");
+    } else if (args.length === 1) {
+        await runFile(args[0]);
     }
 
     runPrompt();
@@ -24,6 +27,15 @@ function run(source: string) {
         console.error(result.value.message);
         return;
     }
+}
+
+async function runFile(path: string) {
+    const content = file(path);
+
+    const text = await content.text();
+
+    const sanitaizedText = text.replace(/\n$/, "");
+    run(sanitaizedText);
 }
 
 main();

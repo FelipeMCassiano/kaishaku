@@ -1,13 +1,11 @@
-// DO a b-tree later
+// TODO: a b-tree later
+//
+import { type User } from "./type";
 
-export const dbToy: Map<string, person[]> = new Map();
-
-dbToy.set("pessoas", [
+export const dbToy: Map<string, User[]> = new Map();
+const users: User[] = [
     { name: "pedro", age: 25 },
     { name: "joaquin", age: 50 },
-]);
+];
 
-export interface person {
-    name: string;
-    age: number;
-}
+dbToy.set("users", users);

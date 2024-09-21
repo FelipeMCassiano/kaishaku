@@ -1,5 +1,6 @@
-import { which } from "bun";
-import { dbToy, type person } from "../db/db";
+import { z } from "zod";
+import { dbToy } from "../db/db";
+import { UserSchema, type User } from "../db/type";
 import { err, ok, type Result } from "../pkg/result";
 import {
     CLAUSES,
@@ -7,7 +8,6 @@ import {
     OPERATIONS,
     type Column,
     type Condition,
-    type Table,
     type Values,
 } from "./tokens";
 
@@ -33,7 +33,8 @@ export const interpret = (query: string[]): Result<string, Error> => {
                 if (resInsert.type === "err") {
                     return err(resInsert.value);
                 }
-                return ok("pronto");
+
+                return ok(resInsert.value);
         }
     }
 
@@ -43,9 +44,9 @@ const getOperation = (x: string): OPERATIONS => {
     return OPERATIONS[x as keyof typeof OPERATIONS];
 };
 
-const handleInsert = (query: string[]): Result<null, Error> => {
+const handleInsert = (query: string[]): Result<string, Error> => {
     const values: Values = [];
-    const columns: Column[] = [];
+    const columns: Column<string>[] = [];
     const into = getOperation(query.shift() ?? "");
     if (into === undefined) {
         return err(Error("INSERT: missing into"));
@@ -76,27 +77,64 @@ const handleInsert = (query: string[]): Result<null, Error> => {
         }
     }
 
-    execInsert(tableName, values, columns);
+    const res = execInsert(tableName, values, columns);
+    if (res.type === "err") return err(res.value);
 
-    return ok(null);
+    return ok(res.value);
 };
 
-const execInsert = (tableName: string, values: Values, columns: Column[]) => {
+const execInsert = <T>(
+    tableName: string,
+    values: Values,
+    columns: Column<T>[],
+): Result<string, Error> => {
     const table = dbToy.get(tableName);
     if (table === undefined) {
-        return;
+        return err(Error("INSERT: table does not exists"));
     }
 
     type typeOfTable = (typeof table)[0];
 
-    const newRow: typeOfTable[] = [];
+    const newRow: typeOfTable[] = [] as typeOfTable[];
     columns.forEach((col, index) => {
-        const row: any = { [col.value as keyof typeOfTable]: values[index] };
+        const key = col.value as keyof typeOfTable; // Get the key
+
+        let valueToValidate: any = values[index];
+
+        const schemaShape = UserSchema.shape[key];
+
+        if (schemaShape instanceof z.ZodNumber && typeof valueToValidate === "string") {
+            valueToValidate = parseFloat(valueToValidate);
+        }
+
+        const validationResult = UserSchema.pick({ [key]: true }).safeParse({
+            [key]: valueToValidate,
+        });
+
+        if (!validationResult.success) {
+            console.error(validationResult.error.message);
+            return;
+        }
+
+        // Extract the validated value
+        const validatedValue = validationResult.data[key];
+
+        const row: Partial<typeOfTable> = {
+            [key]: validatedValue, // Use the validated value directly
+        };
+
         newRow.push(row as typeOfTable);
     });
 
-    table.push(...newRow);
+    const rowToObject: typeOfTable = newRow.reduce((acc, row) => {
+        return { ...acc, ...row };
+    }) as typeOfTable;
+
+    table.push(rowToObject);
+
+    return ok(`Row inserted: ${rowToObject}`);
 };
+
 const handleValues = (query: string[]): string[] | undefined => {
     const values: Values = [];
     while (query.length > 0) {
@@ -111,7 +149,7 @@ const handleValues = (query: string[]): string[] | undefined => {
     return values;
 };
 
-const handleColumns = (query: string[]): Column | undefined => {
+const handleColumns = (query: string[]): Column<string> | undefined => {
     if (!isVALUES(query[0])) {
         const next = query.shift();
         if (next === undefined) {
@@ -182,18 +220,20 @@ const execSelect = (
             return err(Error(`FROM: Table '${tableName}' does not exist`));
         }
 
+        type typeOfTable = (typeof table)[0];
+
         const results = table
             .map((tableRow) => {
                 const rowResult: { [key: string]: any } = {};
 
                 if (conditions.length === 0) {
-                    populateRowResult(columns, tableRow, rowResult);
+                    populateRowResult<typeOfTable>(columns, tableRow, rowResult);
                     return rowResult;
                 }
 
                 for (const cond of conditions) {
-                    if (evaluateCondition(cond, tableRow)) {
-                        populateRowResult(columns, tableRow, rowResult);
+                    if (evaluateCondition<typeOfTable>(cond, tableRow)) {
+                        populateRowResult<typeOfTable>(columns, tableRow, rowResult);
                         break;
                     }
                 }
@@ -208,16 +248,16 @@ const execSelect = (
     return ok(null);
 };
 
-function populateRowResult(columns: string[], tableRow: any, rowResult: { [key: string]: any }) {
+function populateRowResult<T>(columns: string[], tableRow: any, rowResult: { [key: string]: any }) {
     columns.forEach((col) => {
         if (col in tableRow) {
-            rowResult[col] = tableRow[col as keyof person];
+            rowResult[col] = tableRow[col as keyof T];
         }
     });
 }
 
-function evaluateCondition(cond: Condition, tableRow: any): boolean {
-    const leftValue = tableRow[cond.left as keyof person];
+function evaluateCondition<T>(cond: Condition, tableRow: any): boolean {
+    const leftValue = tableRow[cond.left as keyof T];
 
     switch (cond.comparisson) {
         case COMPARATOR.NONE:
@@ -232,8 +272,8 @@ function evaluateCondition(cond: Condition, tableRow: any): boolean {
             return false;
     }
 }
-const isColumn = (clause: CLAUSES | Column): clause is Column => {
-    return (clause as Column).value !== undefined;
+const isColumn = (clause: CLAUSES | Column<string>): clause is Column<string> => {
+    return (clause as Column<string>).value !== undefined;
 };
 
 const handleWHERE = (query: string[]): Result<Condition, Error> => {
@@ -264,7 +304,7 @@ const handleFROM = (query: string[]): Result<string, Error> => {
     return ok(table);
 };
 
-const getClauseOrCollum = (x: string): CLAUSES | Column | null => {
+const getClauseOrCollum = (x: string): CLAUSES | Column<string> | null => {
     if (x.length < 0) {
         return null;
     }

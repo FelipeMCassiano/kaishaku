@@ -21,12 +21,8 @@ export enum COMPARATOR {
 
 export type Values = string[];
 
-export interface Column {
-    value: string;
-}
-
-export interface Table {
-    value: string;
+export interface Column<T> {
+    value: T;
 }
 
 export interface Condition {
