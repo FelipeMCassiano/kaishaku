@@ -82,7 +82,6 @@ const handleInsert = (query: string[]): Result<string, Error> => {
 
   return ok(res.value);
 };
-
 const execInsert = <T>(
   tableName: string,
   values: Values,
@@ -90,47 +89,38 @@ const execInsert = <T>(
 ): Result<string, Error> => {
   const table = dbToy.get(tableName);
   if (table === undefined) {
-    return err(Error("INSERT: table does not exists"));
+    return err(Error(`INSERT: table (${tableName}) does not exists`));
   }
 
   type typeOfTable = (typeof table)[0];
 
-  const newRow: typeOfTable[] = [] as typeOfTable[];
-  columns.forEach((col, index) => {
+  const newRow: Partial<typeOfTable> = {};
+  for (let index = 0; index < columns.length; index++) {
+    const col = columns[index];
     const key = col.value as keyof typeOfTable;
-
     let valueToValidate: any = values[index];
 
     const schemaShape = UserSchema.shape[key];
 
-    const value = convertType(valueToValidate, schemaShape._def.typeName);
-
-    const validationResult = UserSchema.pick({ [key]: true }).safeParse({
-      [key]: value,
-    });
-
-    if (!validationResult.success) {
-      console.error(validationResult.error.message);
-      return;
+    if (schemaShape === undefined) {
+      return err(
+        Error(`COLUMN: ${col.value} does not exist in ${tableName} table`),
+      );
     }
 
-    // Extract the validated value
-    const validatedValue = validationResult.data[key];
+    const value = convertType(valueToValidate, schemaShape._def.typeName);
 
-    const row: Partial<typeOfTable> = {
-      [key]: validatedValue, // Use the validated value directly
-    };
+    const schema = UserSchema.pick({ [key]: true });
+    const validationResult = schema.safeParse({ [key]: value });
 
-    newRow.push(row as typeOfTable);
-  });
+    if (!validationResult.success) {
+      return err(Error(`VALIDATION: Validation error on column: ${col.value}`));
+    }
 
-  const rowToObject: typeOfTable = newRow.reduce((acc, row) => {
-    return { ...acc, ...row };
-  }) as typeOfTable;
-
-  table.push(rowToObject);
-
-  return ok(`Row inserted: ${rowToObject}`);
+    newRow[key] = validationResult.data[key] as typeOfTable[keyof typeOfTable];
+  }
+  table.push(newRow as typeOfTable);
+  return ok(`Row inserted: ${JSON.stringify(newRow)}`);
 };
 
 const handleValues = (query: string[]): string[] | undefined => {

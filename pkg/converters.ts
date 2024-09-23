@@ -1,16 +1,16 @@
-import type { ZodType } from "zod";
+const typeConverters = {
+  ZodString: (value) => String(value),
+  ZodNumber: (value) => parseFloat(value),
+  ZodBoolean: (value) => value === "true",
+  ZodDate: (value) => new Date(value),
+  ZodArray: (value) => JSON.parse(value),
+} satisfies Record<string, (value: any) => any>;
 
-const typeConverters: Record<string, (value: any) => any> = {
-    ZodString: (value) => String(value),
-    ZodNumber: (value) => parseFloat(value),
-    ZodBoolean: (value) => value === "true",
-    ZodDate: (value) => new Date(value),
-    ZodArray: (value) => JSON.parse(value),
-    ZodObject: (value) => JSON.parse(value),
-};
+export const convertType = <K extends keyof typeof typeConverters>(
+  value: unknown,
+  typeObj: K,
+): ReturnType<(typeof typeConverters)[K]> => {
+  const converter = typeConverters[typeObj];
 
-export const convertType = <T>(value: any, typeObj: ZodType<T>): any => {
-    const converter = typeConverters[typeObj as any];
-
-    return converter(value);
+  return converter(value);
 };
