@@ -128,7 +128,7 @@ const getComparator = (x: string): COMPARATOR | undefined => {
     return Object.values(COMPARATOR).find((enumValue) => enumValue === x);
 };
 
-const handleFROM = (query: string[]): Result<string, Error> => {
+export const handleFROM = (query: string[]): Result<string, Error> => {
     const table = query.shift();
     if (table === undefined) {
         return err(Error("FROM: this clause needs a table"));
