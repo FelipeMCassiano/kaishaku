@@ -1,4 +1,10 @@
-# kaishaku
+# kaishaku - A Simple SQL parser
+
+```bash
+INSERT INTO table_name column_1 column_2... VALUES value_1 value_2...
+SELECT column_1 column_2 FROM table_name WHERE condition
+```
+
 
 To install dependencies:
 
@@ -12,5 +18,5 @@ To run:
 bun run index.ts
 ```
 
-This project was created using `bun init` in bun v1.0.29. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+
 # kaishaku
