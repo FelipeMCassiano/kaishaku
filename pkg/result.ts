@@ -16,3 +16,7 @@ export const err = <T>(x: T): Err<T> => {
 export const ok = <T>(x: T): Ok<T> => {
     return { value: x, type: "ok" };
 };
+
+export const isErr = <O, E>(x: Result<O, E>) => {
+    return x.type === "err";
+};

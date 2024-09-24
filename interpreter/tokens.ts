@@ -5,6 +5,7 @@ export enum OPERATIONS {
     INSERT = "INSERT",
     INTO = "INTO",
     VALUES = "VALUES",
+    SET = "SET",
 }
 
 export enum CLAUSES {
@@ -23,6 +24,11 @@ export type Values = string[];
 
 export interface Column<T> {
     value: T;
+}
+export interface Assignment {
+    column: Column<string>;
+    assigner: COMPARATOR.EQUALS;
+    value: string;
 }
 
 export interface Condition {
