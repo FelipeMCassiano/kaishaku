@@ -1,4 +1,4 @@
-import { z, ZodObject, type ZodRawShape, type ZodTypeAny } from "zod";
+import { z, ZodObject, type ZodTypeAny } from "zod";
 import { dbToy } from "../../db/db";
 import { convertType } from "../../pkg/converters";
 import { err, isErr, ok, type Result } from "../../pkg/result";
@@ -68,14 +68,22 @@ const execInsert = <T>(
         const key = col.value as keyof typeOfTable;
         let valueToValidate: any = values[index];
 
-        const result = validateSchema(key, dynamicSchema, tableName, col, valueToValidate);
+        const result = validateSchema(
+            key,
+            dynamicSchema,
+            tableName,
+            col,
+            valueToValidate,
+        );
         if (isErr(result)) {
             return err(result.value);
         }
 
         const validationResult = result.value;
 
-        newRow[key] = validationResult.data[key] as typeOfTable[keyof typeOfTable];
+        newRow[key] = validationResult.data[
+            key
+        ] as typeOfTable[keyof typeOfTable];
     }
     table.push(newRow as typeOfTable);
     return ok(`Row inserted: ${JSON.stringify(newRow)}`);
@@ -148,18 +156,26 @@ export const validateSchema = <T>(
     const schemaShape = dynamicSchema.shape[key];
 
     if (schemaShape === undefined) {
-        return err(Error(`COLUMN: ${column.value} does not exist in ${tableName} table`));
+        return err(
+            Error(
+                `COLUMN: ${column.value} does not exist in ${tableName} table`,
+            ),
+        );
     }
 
-    const value = convertType(val, schemaShape._def.typeName);
+    const value = convertType(val, schemaShape.type);
 
     const schema = dynamicSchema.pick({ [key]: true });
     const validationResult = schema.safeParse({ [key]: value });
 
     if (!validationResult.success) {
-        const errorMessage = validationResult.error.errors.map((err) => err.message).join(", ");
+        const errorMessage = validationResult.error.errors
+            .map((err) => err.message)
+            .join(", ");
 
-        return err(Error(`INSERT: not matched column '${key}' type (${errorMessage})`));
+        return err(
+            Error(`INSERT: not matched column '${key}' type (${errorMessage})`),
+        );
     }
 
     return ok(validationResult);
